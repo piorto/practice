@@ -1,0 +1,85 @@
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.metrics import accuracy_score, confusion_matrix
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
+from sklearn.utils import resample
+
+# Load dataset
+url = 'https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data'
+columns = ['age', 'workclass', 'fnlwgt', 'education', 'education-num', 'marital-status',
+           'occupation', 'relationship', 'race', 'sex', 'capital-gain', 'capital-loss',
+           'hours-per-week', 'native-country', 'income']
+
+# Read the dataset
+data = pd.read_csv(url, header=None, names=columns, na_values=' ?')
+
+#  preprocessing method :    Returns: X (pd.DataFrame): The preprocessed feature set. y (pd.Series): The target variable
+def preprocess_data(data):
+
+    # Drop rows with missing values
+    data.dropna(inplace=True)
+
+    # Handle class imbalance
+    income_majority = data[data.income == ' <=50K']
+    income_minority = data[data.income == ' >50K']
+
+    income_minority_upsampled = resample(income_minority,
+                                         replace=True,
+                                         n_samples=len(income_majority),
+                                         random_state=42)
+
+    data = pd.concat([income_majority, income_minority_upsampled])
+
+    # Define numerical and columnscategorical
+    categorical_columns = ['workclass', 'education', 'marital-status', 'occupation', 'relationship',
+                           'race', 'sex', 'native-country']
+    numerical_columns = ['age', 'fnlwgt', 'education-num', 'capital-gain', 'capital-loss', 'hours-per-week']
+
+    # Separate features (X) from target (y)
+    X = data.drop('income', axis=1)
+    y = data['income'].apply(lambda x: 1 if x == ' >50K' else 0)
+
+    # Preprocessing pipeline
+    numeric_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy='median')),
+        ('scaler', StandardScaler())])
+
+    categorical_transformer = Pipeline(steps=[
+        ('onehot', OneHotEncoder(handle_unknown='ignore'))])
+
+    # Combine preprocessing steps
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('num', numeric_transformer, numerical_columns),
+            ('cat', categorical_transformer, categorical_columns)])
+
+    return X, y, preprocessor
+
+# Preprocess the data
+X, y, preprocessor = preprocess_data(data)
+
+# Split the data into training and test sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+
+# Create a pipeline with the preprocessor and the Decision Tree classifier to insure Consistency
+clf = Pipeline(steps=[('preprocessor', preprocessor),
+                      ('classifier', DecisionTreeClassifier(random_state=42))])
+
+# Train decisiontree model
+clf.fit(X_train, y_train)
+
+# Make predictions on the test data
+y_pred = clf.predict(X_test)
+
+# Evaluate the model
+accuracy = accuracy_score(y_test, y_pred)
+conf_matrix = confusion_matrix(y_test, y_pred)
+
+# Display results
+print(f'Accuracy: {accuracy * 100:.2f}%')
+print('Confusion Matrix:')
+print(conf_matrix)
